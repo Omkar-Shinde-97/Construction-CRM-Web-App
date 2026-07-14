@@ -13,6 +13,7 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { Modal } from '../../components/ui/Modal';
 import { formatINR } from '../../utils/formatters';
 import { Employee } from '../../types';
+import { TOKEN } from '../../api/apiClient';
 
 const employeeSchema = z.object({
   name: z.string().min(3, 'Enter a full name'),
@@ -67,45 +68,8 @@ const DEPARTMENT_OPTIONS = [
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
 
-interface ApiEmployee {
-  id: string;
-  employeeCode: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  alternatePhone: string | null;
-  role: string;
-  department: string;
-  status: string;
-  dateOfBirth: string;
-  joinDate: string;
-  address: string;
-  salary: number;
-  avatarUrl: string | null;
-  performanceRating: number | null;
-  performanceComment: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface EmployeesApiResponse {
-  success: boolean;
-  message: string;
-  data: {
-    content: ApiEmployee[];
-    pageNumber: number;
-    pageSize: number;
-    totalElements: number;
-    totalPages: number;
-    first: boolean;
-    last: boolean;
-  };
-  timestamp: string;
-}
-
 const EMPLOYEES_API_URL = 'http://localhost:8080/api/employees';
-const token =
-  'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJTVVBFUl9BRE1JTiIsImlhdCI6MTc4MjQ4MjA4NywiZXhwIjoxNzgyNTY4NDg3fQ.RbWp8ITKf12gwHBA82mWlC_vNhC2PHUoVrZTsFCgCtw';
+
 const toTitleCase = (value: string) =>
   value
     .toLowerCase()
@@ -122,7 +86,7 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-const mapApiEmployee = (employee: ApiEmployee): Employee => ({
+export const mapApiEmployee = (employee: ApiEmployee): Employee => ({
   id: employee.id,
   employeeId: employee.employeeCode,
   name: employee.fullName,
@@ -166,7 +130,7 @@ export function EmployeesList() {
           signal: controller.signal,
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${TOKEN}`,
           },
         });
 
@@ -275,7 +239,7 @@ export function EmployeesList() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${TOKEN}`,
         },
         body: JSON.stringify(payload),
       });

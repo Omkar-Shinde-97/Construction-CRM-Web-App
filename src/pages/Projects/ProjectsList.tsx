@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { DataTable } from '../../components/shared/DataTable';
 import { Progress } from '../../components/shared/Progress';
 import { compactINR } from '../../utils/formatters';
+import { TOKEN } from '../../api/apiClient';
 
 interface ApiProject {
   id: string;
@@ -46,8 +47,6 @@ export function ProjectsList() {
 
   const PROJECTS_API_URL = 'http://localhost:8080/api/projects';
 
-  const TOKEN =
-    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJTVVBFUl9BRE1JTiIsImlhdCI6MTc4MjQ4MjA4NywiZXhwIjoxNzgyNTY4NDg3fQ.RbWp8ITKf12gwHBA82mWlC_vNhC2PHUoVrZTsFCgCtw';
   const DEFAULT_PROJECT_IMAGE =
     'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=1200';
 

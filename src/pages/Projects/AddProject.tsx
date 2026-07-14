@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,42 +9,56 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { ArrowLeft } from 'lucide-react';
+import { Employee } from '../../types';
+import { mapApiEmployee } from '../Employees/EmployeesList';
+import { TOKEN } from '../../api/apiClient';
 
 const projectSchema = z.object({
   name: z.string().min(3, 'Project name is required'),
-  client: z.string().min(3, 'Client name is required'),
-  category: z.string().min(2, 'Choose a category'),
+  clientName: z.string().min(3, 'Client name is required'),
+  clientEmail: z.string().email().optional().or(z.literal('')),
+  clientPhone: z.string().optional(),
+  category: z.string().min(1, 'Choose a category'),
   location: z.string().min(3, 'Location is required'),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
-  budget: z.number().min(1000, 'Budget must be greater than ₹1,000'),
-  status: z.enum(['Planning', 'In Progress', 'On Hold', 'Completed']),
-  managerId: z.string().min(1, 'Assign a manager'),
-  teamIds: z.array(z.string()).min(1, 'Select at least one team member'),
-  description: z.string().min(10, 'Provide a brief description'),
+  totalBudget: z.number().min(1000),
+  contractValue: z.number().optional(),
+  completionPercentage: z.number().min(0).max(100).default(0),
+  status: z.string(),
+  managerId: z.string().min(1),
+  teamIds: z.array(z.string()).min(1),
+  description: z.string().min(10),
 });
 
 type ProjectFormValues = z.infer<typeof projectSchema>;
 
 export function AddProject() {
+  const EMPLOYEES_API_URL = 'http://localhost:8080/api/employees';
+
   const navigate = useNavigate();
-  const employees = useDataStore((state) => state.employees);
-  const addProject = useDataStore((state) => state.addProject);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [employeeError, setEmployeeError] = useState('');
   const pushToast = useToastStore((state) => state.pushToast);
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: '',
-      client: '',
+      clientName: '',
+      clientEmail: '',
+      clientPhone: '',
       category: '',
       location: '',
       startDate: '',
       endDate: '',
-      budget: 0,
-      status: 'Planning',
+      totalBudget: 0,
+      contractValue: 0,
+      completionPercentage: 0,
+      status: 'PLANNING',
       managerId: employees[0]?.id ?? '',
-      teamIds: employees[0] ? [employees[0].id] : [],
+      teamIds: [],
       description: '',
     },
   });
@@ -58,38 +72,105 @@ export function AddProject() {
     [employees],
   );
 
-  const handleSave = (values: ProjectFormValues) => {
-    const newProjectId = `PRJ-${Date.now()}`;
-    const teamMembers = Array.from(
-      new Set([...values.teamIds, values.managerId]),
-    );
+  useEffect(() => {
+    const controller = new AbortController();
 
-    addProject({
-      id: newProjectId,
-      name: values.name,
-      client: values.client,
-      category: values.category,
-      location: values.location,
-      startDate: values.startDate,
-      endDate: values.endDate,
-      status: values.status,
-      budget: values.budget,
-      spent: 0,
-      completion: 0,
-      managerId: values.managerId,
-      teamIds: teamMembers,
-      description: values.description,
-      cover:
-        'https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=900&q=80',
-    });
+    async function loadEmployees() {
+      try {
+        setLoadingEmployees(true);
 
-    pushToast({
-      title: 'Project created',
-      description: `${values.name} has been added to the project pipeline.`,
-      variant: 'success',
-    });
+        const response = await fetch(EMPLOYEES_API_URL, {
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${TOKEN}`,
+          },
+        });
 
-    navigate(`/projects/${newProjectId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to load employees (${response.status})`);
+        }
+
+        const result = (await response.json()) as EmployeesApiResponse;
+
+        if (!result.success) {
+          throw new Error(result.message);
+        }
+
+        setEmployees(result.data.content.map(mapApiEmployee));
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+
+        setEmployeeError(
+          err instanceof Error ? err.message : 'Failed to load employees',
+        );
+      } finally {
+        setLoadingEmployees(false);
+      }
+    }
+
+    loadEmployees();
+
+    return () => controller.abort();
+  }, []);
+
+  const handleSave = async (values: ProjectFormValues) => {
+    try {
+      const payload = {
+        name: values.name,
+        clientName: values.clientName,
+        clientEmail: values.clientEmail || null,
+        clientPhone: values.clientPhone || null,
+        category: values.category,
+        status: values.status,
+        location: values.location,
+        description: values.description,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        totalBudget: values.totalBudget,
+        contractValue: values.contractValue || 0,
+        completionPercentage: values.completionPercentage || 0,
+        projectManagerId: values.managerId,
+        teamMemberIds: Array.from(
+          new Set([...values.teamIds, values.managerId]),
+        ),
+      };
+
+      const response = await fetch('http://localhost:8080/api/projects', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      const project = await response.json();
+
+      pushToast({
+        title: 'Project Created',
+        description: `${payload.name} created successfully`,
+        variant: 'success',
+      });
+
+      navigate(`/projects`);
+    } catch (error) {
+      console.error(error);
+
+      pushToast({
+        title: 'Failed',
+        description:
+          error instanceof Error ? error.message : 'Unable to create project',
+        variant: 'error',
+      });
+    }
   };
 
   return (
@@ -126,12 +207,12 @@ export function AddProject() {
             <label className='space-y-2 text-sm text-slate-700 dark:text-slate-200'>
               <span>Client Name</span>
               <input
-                {...form.register('client')}
+                {...form.register('clientName')}
                 className='h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white'
                 placeholder='e.g. Coastal Developers'
               />
               <span className='text-xs text-red-500'>
-                {form.formState.errors.client?.message}
+                {form.formState.errors.clientName?.message}
               </span>
             </label>
           </div>
@@ -142,15 +223,13 @@ export function AddProject() {
               <select
                 {...form.register('category')}
                 className='h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white'>
-                <option value=''>Select category</option>
-                <option value='Residential'>Residential</option>
-                <option value='Commercial'>Commercial</option>
-                <option value='Infrastructure'>Infrastructure</option>
-                <option value='Retail'>Retail</option>
-                <option value='Healthcare'>Healthcare</option>
-                <option value='Luxury Villas'>Luxury Villas</option>
-                <option value='Institutional'>Institutional</option>
-                <option value='Industrial'>Industrial</option>
+                <option value=''>Select Category</option>
+                <option value='RESIDENTIAL'>Residential</option>
+                <option value='COMMERCIAL'>Commercial</option>
+                <option value='INDUSTRIAL'>Industrial</option>
+                <option value='INFRASTRUCTURE'>Infrastructure</option>
+                <option value='RENOVATION'>Renovation</option>
+                <option value='INTERIOR'>Interior</option>
               </select>
               <span className='text-xs text-red-500'>
                 {form.formState.errors.category?.message}
@@ -172,10 +251,12 @@ export function AddProject() {
               <select
                 {...form.register('status')}
                 className='h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white'>
-                <option value='Planning'>Planning</option>
-                <option value='In Progress'>In Progress</option>
-                <option value='On Hold'>On Hold</option>
-                <option value='Completed'>Completed</option>
+                <option value='PLANNING'>Planning</option>
+                <option value='IN_PROGRESS'>In Progress</option>
+                <option value='ON_HOLD'>On Hold</option>
+                <option value='COMPLETED'>Completed</option>
+                <option value='WON'>Won</option>
+                <option value='LOST'>Lost</option>
               </select>
               <span className='text-xs text-red-500'>
                 {form.formState.errors.status?.message}
@@ -210,12 +291,12 @@ export function AddProject() {
               <span>Budget</span>
               <input
                 type='number'
-                {...form.register('budget', { valueAsNumber: true })}
+                {...form.register('totalBudget', { valueAsNumber: true })}
                 className='h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white'
                 placeholder='₹'
               />
               <span className='text-xs text-red-500'>
-                {form.formState.errors.budget?.message}
+                {form.formState.errors.totalBudget?.message}
               </span>
             </label>
             <label className='space-y-2 text-sm text-slate-700 dark:text-slate-200'>
